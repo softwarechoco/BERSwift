@@ -1,0 +1,22 @@
+PODS:
+  - BERSwift (0.1.0)
+  - Nimble (7.0.3)
+  - Quick (1.2.0)
+
+DEPENDENCIES:
+  - BERSwift (from `../`)
+  - Nimble (~> 7.0.2)
+  - Quick (~> 1.2.0)
+
+EXTERNAL SOURCES:
+  BERSwift:
+    :path: ../
+
+SPEC CHECKSUMS:
+  BERSwift: a39627ebb0d469e99cb73f016a3b86206556d7f1
+  Nimble: 7f5a9c447a33002645a071bddafbfb24ea70e0ac
+  Quick: 58d203b1c5e27fff7229c4c1ae445ad7069a7a08
+
+PODFILE CHECKSUM: 98e3b4c9199874390294f22a063992cffe025320
+
+COCOAPODS: 1.2.1
