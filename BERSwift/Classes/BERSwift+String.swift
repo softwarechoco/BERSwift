@@ -8,6 +8,7 @@
 
 import Foundation
 
+//MARK: HexString Util
 extension Data {
     private static let unsupportHexCharacterSet = CharacterSet(charactersIn: "0123456789abcdefABCDEF").inverted
     
@@ -29,14 +30,13 @@ extension Data {
         self.init(bytes: bytes)
     }
     
-    public var hexString: String {
+    internal var hexString: String {
         return self.map({ String(format: "%02x", $0) }).joined()
     }
 }
 
+//MARK: - Extensions for HexString
 extension BERSwift {
-    private static let unsupportCharacterSet = CharacterSet(charactersIn: "0123456789abcdefABCDEF").inverted
-    
     public static func parse(fromHexString string: String) throws -> Node {
         guard let data = Data.init(fromHexString: string) else {
             throw BERSwift.ParseError.invalidValue
@@ -65,9 +65,9 @@ extension BERSwift.Node {
 }
 
 extension BERSwift.ValueNode {
-    public convenience init?(tagClass: BERSwift.TagClass = .universal, tagType: BERSwift.TagType = .integer, valueEncoding: BERSwift.ValueEncoding = .primitive, hexString: String) {
+    public convenience init(tagClass: BERSwift.TagClass = .universal, tagType: BERSwift.TagType = .integer, valueEncoding: BERSwift.ValueEncoding = .primitive, hexString: String) throws {
         guard let data = Data.init(fromHexString: hexString) else {
-            return nil
+            throw BERSwift.ParseError.invalidValue
         }
         
         self.init(tagClass: tagClass, tagType: tagType, valueEncoding: valueEncoding, data: data)

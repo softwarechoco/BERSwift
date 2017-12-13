@@ -10,10 +10,17 @@ class TableOfContentsSpec: QuickSpec {
 
         do {
             let node = try BERSwift.parse(fromBase64String: src)
-            succeed()
+            let tgt = node.base64String
+            
+            print(src.count)
+            print(tgt.count)
+            if src == tgt {
+                print("success")
+            } else {
+                print(node.hexString)
+            }
         } catch let error {
             dump(error)
-            fail()
         }
         
 //        describe("these will fail") {

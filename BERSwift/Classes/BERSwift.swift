@@ -113,7 +113,7 @@ public struct BERSwift {
         public fileprivate(set) var data: Data
         
         public init(tagClass: TagClass = .universal, tagType: TagType = .integer, valueEncoding: ValueEncoding = .primitive, data: Data = Data()) {
-            self.data = data
+            self.data = Data(data)
             super.init(tagClass: tagClass, tagType: tagType, valueEncoding: valueEncoding)
         }
         
@@ -133,11 +133,13 @@ extension BERSwift.Node {
     fileprivate static func parse(fromData data: Data) throws -> BERSwift.Node {
         let headerOct = try BERSwift.getByte(ofData: data, offset: 0)
         let lengthInfoOct = try BERSwift.getByte(ofData: data, offset: 1)
-        guard let tagClass = BERSwift.TagClass(rawValue: headerOct >> 6 & 0xC),
+        guard let tagClass = BERSwift.TagClass(rawValue: (headerOct >> 6) & 0x3),
             let tagType = BERSwift.TagType(rawValue: headerOct & 0x1F),
-            let valueEncoding = BERSwift.ValueEncoding(rawValue: headerOct >> 5 & 0x1) else {
+            let valueEncoding = BERSwift.ValueEncoding(rawValue: (headerOct >> 5) & 0x1) else {
             throw BERSwift.ParseError.invalidValue
         }
+        
+        print("\(valueEncoding) \((headerOct >> 5) & 0x1)")
         
         let tmpLength = Int(lengthInfoOct) & 0x7F
         let dataLength: Int
@@ -155,8 +157,6 @@ extension BERSwift.Node {
             dataLength = tmpLength
             dataStartOffset = 2
         }
-        
-        print("offset: \(data.startIndex) length:\(dataStartOffset)+\(dataLength) type:\(tagType)")
         
         guard dataStartOffset + dataLength <= data.count else {
             throw BERSwift.ParseError.outOfData(offset: data.startIndex + dataStartOffset, length: dataLength)
@@ -199,6 +199,9 @@ extension BERSwift.Node {
         }
         
         let headerOct = self.tagClass.rawValue << 6 | self.valueEncoding.rawValue << 5 | self.tagType.rawValue
+        
+        print("\(self.tagClass) \(self.valueEncoding) \(self.tagType) \(headerOct)")
+        
         let lengthOcts: [UInt8]
         if data.count < 128 {
             lengthOcts = [UInt8(data.count)]
@@ -213,8 +216,8 @@ extension BERSwift.Node {
             lengthOcts = tmpOcts.reversed()
         }
         
-        data.insert(headerOct, at: 0)
-        data.insert(contentsOf: lengthOcts, at: 1)
+        data.insert(contentsOf: lengthOcts, at: data.startIndex)
+        data.insert(headerOct, at: data.startIndex)
         
         return data
     }
