@@ -14,7 +14,7 @@ public struct BERSwift {
     
     public enum ParseError : Error {
         case invalidValue
-        case outOfData
+        case outOfData(offset: Int, length: Int)
     }
     
     public enum TagClass: UInt8 {
@@ -39,6 +39,8 @@ public struct BERSwift {
         case embeddedPDV = 11
         case utf8String = 12
         case relativeOID = 13
+        case RESERVED_0E = 14
+        case RESERVED_0F = 15
         case sequence = 16
         case set = 17
         case numbericString = 18
@@ -80,7 +82,7 @@ public struct BERSwift {
             }
         }
         
-        public var size: UInt {
+        public var size: Int {
             return 0
         }
         
@@ -96,12 +98,12 @@ public struct BERSwift {
     public class SequenceNode: Node {
         public fileprivate(set) var nodes: [Node]
 
-        public init(tagClass: TagClass = .universal, valueEncoding: ValueEncoding = .primitive, nodes: [Node]) {
+        public init(tagClass: TagClass = .universal, tagType: TagType = .sequence, valueEncoding: ValueEncoding = .primitive, nodes: [Node]) {
             self.nodes = nodes
-            super.init(tagClass: tagClass, tagType: .sequence, valueEncoding: valueEncoding)
+            super.init(tagClass: tagClass, tagType: tagType, valueEncoding: valueEncoding)
         }
         
-        public override var size: UInt {
+        public override var size: Int {
             let dataSize = self.nodes.reduce(0, { $0 + $1.size })
             return BERSwift.getHeaderSize(dataSize: dataSize) + dataSize
         }
@@ -115,8 +117,8 @@ public struct BERSwift {
             super.init(tagClass: tagClass, tagType: tagType, valueEncoding: valueEncoding)
         }
         
-        public override var size: UInt {
-            let dataSize = UInt(self.data.count)
+        public override var size: Int {
+            let dataSize = Int(self.data.count)
             return BERSwift.getHeaderSize(dataSize: dataSize) + dataSize
         }
     }
@@ -137,39 +139,46 @@ extension BERSwift.Node {
             throw BERSwift.ParseError.invalidValue
         }
         
-        let tmpLength = UInt(lengthInfoOct & 0x7F)
-        let dataLength: UInt
-        let dataStartOffset: UInt
+        let tmpLength = Int(lengthInfoOct) & 0x7F
+        let dataLength: Int
+        let dataStartOffset: Int
         if (lengthInfoOct & 0x80) == 0x80 {
             if tmpLength == 0 {
-                dataLength = UInt(data.count) - 2
+                dataLength = Int(data.count) - 2
                 dataStartOffset = 2
             } else {
                 let lengthOcts = try BERSwift.getData(ofData: data, offset: 2, length: tmpLength)
-                dataLength = lengthOcts.reduce(0, { UInt($0 << 8) | UInt($1) })
-                dataStartOffset = 2 + UInt(tmpLength)
+                dataLength = lengthOcts.reduce(0, { ($0 << 8) | (Int($1) & 0xFF) })
+                dataStartOffset = 2 + tmpLength
             }
         } else {
             dataLength = tmpLength
             dataStartOffset = 2
         }
         
+        print("offset: \(data.startIndex) length:\(dataStartOffset)+\(dataLength) type:\(tagType)")
+        
         guard dataStartOffset + dataLength <= data.count else {
-            throw BERSwift.ParseError.outOfData
+            throw BERSwift.ParseError.outOfData(offset: data.startIndex + dataStartOffset, length: dataLength)
         }
         
+        
         switch tagType {
-        case .sequence:
+        case .set, .sequence, .endOfContent:
             var offset = dataStartOffset
+            var length = dataLength
             var nodes = [BERSwift.Node]()
-            while offset < data.count {
-                let bodyData = try BERSwift.getData(ofData: data, offset: offset, length: UInt(data.count) - offset)
-                let node = try BERSwift.parse(fromData: bodyData)
-                offset += node.size
+            while length > 0 {
+                let bodyData = try BERSwift.getData(ofData: data, offset: offset, length: length)
+                let node = try self.parse(fromData: bodyData)
+                
+                let size = node.size
+                offset += size
+                length -= size
                 nodes.append(node)
             }
-            return BERSwift.SequenceNode(tagClass: tagClass, valueEncoding: valueEncoding, nodes: nodes)
-            
+            return BERSwift.SequenceNode(tagClass: tagClass, tagType: tagType, valueEncoding: valueEncoding, nodes: nodes)
+        
         default:
             let bodyData = try BERSwift.getData(ofData: data, offset: dataStartOffset, length: dataLength)
             return BERSwift.ValueNode(tagClass: tagClass, tagType: tagType, valueEncoding: valueEncoding, data: bodyData)
@@ -213,29 +222,34 @@ extension BERSwift.Node {
 
 //MARK: - Util
 extension BERSwift {
-    fileprivate static func getHeaderSize(dataSize: UInt) -> UInt {
-        var size:UInt = 0
-        var tmpSize:UInt = dataSize
-        while tmpSize > 0 {
-            size += 1
-            tmpSize >>= 8
+    fileprivate static func getHeaderSize(dataSize: Int) -> Int {
+        if dataSize < 128 {
+            return 2
+        } else {
+            var size:Int = 1
+            var tmpSize:Int = dataSize >> 8
+            while tmpSize > 0 {
+                size += 1
+                tmpSize >>= 8
+            }
+            return 2 + size
         }
-        return 2 + size
+
     }
     
     fileprivate static func getByte(ofData data: Data, offset: Int) throws -> UInt8 {
-        guard offset < data.count else {
-            throw BERSwift.ParseError.outOfData
+        guard 0 <= offset, data.startIndex + offset < data.endIndex else {
+            throw BERSwift.ParseError.outOfData(offset: data.startIndex + offset, length: 1)
         }
         
-        return data[offset]
+        return data[data.startIndex + offset]
     }
     
-    fileprivate static func getData(ofData data: Data, offset: UInt, length: UInt) throws -> Data {
-        guard offset + length <= data.count else {
-            throw BERSwift.ParseError.outOfData
+    fileprivate static func getData(ofData data: Data, offset: Int, length: Int) throws -> Data {
+        guard 0 <= offset, data.startIndex + offset + length <= data.endIndex else {
+            throw BERSwift.ParseError.outOfData(offset: data.startIndex + offset, length: length)
         }
         
-        return Data(data[offset ..< offset+length])
+        return data[(data.startIndex + offset) ..< (data.startIndex + offset + length)]
     }
 }
